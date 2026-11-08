@@ -1,0 +1,33 @@
+# --- model weights / archives (too big for GitHub; get them from Kaggle "model-3"
+#     or Hugging Face — see README) ---
+*.zip
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+quran_demo_app/model/
+
+# --- per-machine app files ---
+quran_demo_app/app_config.json
+quran_demo_app/results_log.csv
+quran_demo_app/crash_log.txt
+quran_demo_app/expected_phonemes.json
+errors
+
+*.wav
+*.mp3
+*.flac
+
+# --- docs / notes (kept local, not shared) ---
+*.md
+
+# --- local tool settings ---
+.claude/
+
+# --- python ---
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
