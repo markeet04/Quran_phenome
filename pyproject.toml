@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iqra"
+version = "0.1.0"
+description = "Detect-then-verify Quranic mispronunciation detection (see SPEC.md)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+]
+
+[project.optional-dependencies]
+# Kaggle GPU notebooks; versions pinned to match NB2/NB8 (SPEC.md section 1).
+train = [
+    "torch",
+    "transformers==4.44.2",
+    "datasets==2.21.0",
+    "accelerate==0.34.2",
+    "soundfile",
+    "librosa",
+]
+verifier = ["lightgbm", "pyarrow"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

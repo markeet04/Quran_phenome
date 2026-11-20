@@ -1,3 +1,6 @@
 [submodule "quran_demo_app/MSA_phonetiser"]
 	path = quran_demo_app/MSA_phonetiser
 	url = https://github.com/Iqra-Eval/MSA_phonetiser.git
+[submodule "third_party/interspeech_IqraEval"]
+	path = third_party/interspeech_IqraEval
+	url = https://github.com/Iqra-Eval/interspeech_IqraEval.git

@@ -27,6 +27,8 @@ errors
 
 # --- python ---
 __pycache__/
+*.egg-info/
+build/
 *.pyc
 .ipynb_checkpoints/
 .venv/
