@@ -65,6 +65,25 @@ def test_candidate_indices():
             assert heard[c.h] == c.heard
 
 
+def test_label_rule_agrees_with_official_counting():
+    """On synthetic clips, every unambiguous candidate's label matches what reverting it
+    does to the official TR/FR counts."""
+    from iqra.candidates import official_label_check
+    truth, pred = make_synthetic(80, seed=21, mixed=True)
+    agree = disagree = ambiguous = 0
+    for (_, t), (_, p) in zip(truth.iterrows(), pred.iterrows()):
+        for _, y, implied in official_label_check(t["Reference_phn"].split(), t["Annotation_phn"].split(),
+                                                  p["Prediction"].split()):
+            if implied is None:
+                ambiguous += 1
+            elif implied == y:
+                agree += 1
+            else:
+                disagree += 1
+    assert agree > 100
+    assert disagree <= 0.02 * (agree + disagree), (agree, disagree, ambiguous)
+
+
 def test_labels_follow_the_human():
     expected = "q a l b i".split()
     said = "k a l b i".split()          # human substituted q -> k

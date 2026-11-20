@@ -85,6 +85,21 @@ def test_verifier_trains_cross_validates_and_sweeps():
     assert verifier.robust_tau(sweep) in set(sweep["tau"])
 
 
+@pytest.mark.parametrize("name", list(verifier.FEATURE_SETS))
+def test_feature_subsets_train_and_predict(name):
+    cfg = Verifier(max_rounds=30, early_stopping=5, cv_folds=3)
+    feats = verifier.FEATURE_SETS[name]
+    train_df, _, _ = _table(60, 3)
+    cv = verifier.cross_validate(train_df, list(train_df["clip"]), cfg, features=feats)
+    booster, enc = verifier.train(train_df, max(1, int(np.median(cv["best_iterations"]))), cfg, features=feats)
+    assert booster.num_feature() == len(feats)
+    assert len(verifier.predict(booster, enc, _table(10, 4)[0])) > 0
+
+
+def test_identity_free_set_has_no_identity_features():
+    assert not set(verifier.IDENTITY) & set(verifier.FEATURE_SETS["no_identity"])
+
+
 def test_auc_and_precision_at_recall():
     assert verifier.auc([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9]) == 1.0
     assert verifier.auc([0, 1], [0.5, 0.5]) == 0.5

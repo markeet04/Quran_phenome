@@ -18,6 +18,18 @@ NUMERIC = ["fa_failed", "span_len", "exp_lp_mean", "exp_lp_max", "gop", "entropy
            "heard_span_len"]
 FEATURES = CATEGORICAL + NUMERIC
 
+# Feature groups for the T3 diagnostics (ablations are reported, never used to tune)
+IDENTITY = ["n_expected", "n_frames", "rel_pos", "n_flags_per_phone"]   # utterance length / position
+ACOUSTIC = ["fa_failed", "span_len", "exp_lp_mean", "exp_lp_max", "gop", "entropy_mean", "blank_mean",
+            "heard_lp_mean", "heard_lp_max", "margin_exp_minus_heard", "heard_peak_prob",
+            "runner_up_prob", "runner_up_is_expected", "heard_span_len"]
+FEATURE_SETS = {
+    "full": FEATURES,
+    "no_identity": [f for f in FEATURES if f not in IDENTITY],
+    "acoustic_only": ["op"] + ACOUSTIC,
+    "pair_only": ["op", "pair"],
+}
+
 
 def params(cfg_verifier, seed=None):
     v = cfg_verifier
@@ -29,16 +41,21 @@ def params(cfg_verifier, seed=None):
 class Encoder:
     """Fixes category levels on the training table; unseen levels become NaN."""
 
+    def __init__(self, features=None):
+        self.features = list(features or FEATURES)
+        self.categorical = [c for c in self.features if c in CATEGORICAL]
+
     def fit(self, df):
-        self.levels = {c: sorted(df[c].astype(str).unique()) for c in CATEGORICAL}
+        self.levels = {c: sorted(df[c].astype(str).unique()) for c in self.categorical}
         return self
 
     def transform(self, df):
-        X = df[FEATURES].copy()
-        for c in CATEGORICAL:
-            X[c] = pd.Categorical(X[c].astype(str), categories=self.levels[c])
-        for c in NUMERIC:
-            X[c] = X[c].astype(float)
+        X = df[self.features].copy()
+        for c in self.features:
+            if c in self.categorical:
+                X[c] = pd.Categorical(X[c].astype(str), categories=self.levels[c])
+            else:
+                X[c] = X[c].astype(float)
         return X
 
 
@@ -61,7 +78,7 @@ def precision_at_recall(y, p, target=0.9):
     return float(tp[k] / (k + 1))
 
 
-def cross_validate(train_df, groups, cfg_verifier):
+def cross_validate(train_df, groups, cfg_verifier, features=None):
     """Grouped K-fold: out-of-fold probabilities, best iteration per fold, AUC, P@R0.9."""
     import lightgbm as lgb
     y = train_df["label"].astype(int).to_numpy()
@@ -74,9 +91,10 @@ def cross_validate(train_df, groups, cfg_verifier):
     best = []
     for k in range(cfg_verifier.cv_folds):
         tr, va = folds != k, folds == k
-        enc = Encoder().fit(train_df[tr])
-        dtr = lgb.Dataset(enc.transform(train_df[tr]), y[tr], categorical_feature=CATEGORICAL)
-        dva = lgb.Dataset(enc.transform(train_df[va]), y[va], categorical_feature=CATEGORICAL, reference=dtr)
+        enc = Encoder(features).fit(train_df[tr])
+        dtr = lgb.Dataset(enc.transform(train_df[tr]), y[tr], categorical_feature=enc.categorical)
+        dva = lgb.Dataset(enc.transform(train_df[va]), y[va], categorical_feature=enc.categorical,
+                          reference=dtr)
         booster = lgb.train(params(cfg_verifier), dtr, num_boost_round=cfg_verifier.max_rounds,
                             valid_sets=[dva], callbacks=[lgb.early_stopping(cfg_verifier.early_stopping,
                                                                             verbose=False)])
@@ -86,11 +104,11 @@ def cross_validate(train_df, groups, cfg_verifier):
             "precision_at_recall_0.9": precision_at_recall(y, oof), "folds": folds}
 
 
-def train(train_df, n_rounds, cfg_verifier):
+def train(train_df, n_rounds, cfg_verifier, features=None):
     import lightgbm as lgb
-    enc = Encoder().fit(train_df)
+    enc = Encoder(features).fit(train_df)
     d = lgb.Dataset(enc.transform(train_df), train_df["label"].astype(int).to_numpy(),
-                    categorical_feature=CATEGORICAL)
+                    categorical_feature=enc.categorical)
     booster = lgb.train(params(cfg_verifier), d, num_boost_round=int(n_rounds))
     return booster, enc
 

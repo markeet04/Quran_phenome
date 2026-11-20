@@ -89,6 +89,27 @@ def remove_insertions(expected, heard):
     return [d for op, _, _, _, d in alignment(expected, heard) if op in ("C", "S")]
 
 
+def official_label_check(expected, said, heard):
+    """What the official counting implies about each S/D candidate (label-rule audit).
+
+    For every candidate, revert only that flag and recount with scorer.clip_counts:
+    TR drops (FR unchanged) -> the flag was a real error (implied 1); FR drops (TR
+    unchanged) -> a false alarm (implied 0); anything else -> ambiguous (reverting it
+    shifted the alignment). Returns [(candidate, label_rule, implied or None)].
+    """
+    from .scorer import clip_counts
+    cands = extract_candidates(expected, heard)
+    labels = label_candidates(expected, said, cands)
+    base = clip_counts(expected, said, heard)
+    out = []
+    for c, y in zip(cands, labels):
+        k = clip_counts(expected, said, revert(expected, heard, {c.pos: False}))
+        d_tr, d_fr = base["TR"] - k["TR"], base["FR"] - k["FR"]
+        implied = 1 if (d_tr > 0 and d_fr == 0) else 0 if (d_fr > 0 and d_tr == 0) else None
+        out.append((c, y, implied))
+    return out
+
+
 # --------------------------------------------------------------------------- features
 VOWELS = {"a", "i", "u", "A", "I", "U", "aa", "ii", "uu", "AA", "II", "UU"}
 # emphatic vs plain counterpart (ص/س, ض/د, ط/ت, ظ/ذ, ظ/ز) and ض/ظ; other consonant swaps
