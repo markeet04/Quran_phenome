@@ -57,6 +57,19 @@ def test_quranic_flags():
     assert data.quranic_flags(sentences, quran) == [True, False, False]
 
 
+def test_quranic_window_flags_handle_error_markers():
+    quran = ["إذ يغشيكم النعاس أمنة منه وينزل عليكم من السماء ماء",
+             "وليستعفف الذين لا يجدون نكاحا حتى يغنيهم الله من فضله",
+             "الله الذي خلقكم من ضعف ثم جعل من بعد ضعف قوة",
+             "وإذ ابتلى إبراهيم ربه بكلمات فأتمهن"]
+    real = ["يُغ@خْشِيكُمُ النُّعَاسَ أَمَنَةً مِّنْهُ",           # inserted letter after @
+            "وَلْيَسْتَعْف@  ِ الَّذِينَ لَا يَجِدُونَ نِكَاحًا",      # marker splits a word
+            "اللَّهُ الَّذِي خَلَق@كُكُمْ مِنْ ضُعْفٍ ",
+            "وَإِذِ ٱبۡتَلَىٰٓ إِبۡرَٰهِيمَ@ُ رَبُّهُ"]                 # @ before a vowel mark
+    msa = ["ذهب الولد إلى المدرسة في الصباح الباكر", "قال الرجل إن الطقس جميل اليوم"]
+    assert data.quranic_window_flags(real + msa, quran) == [True] * 4 + [False] * 2
+
+
 def test_quranic_flags_uthmani_against_simple_spelling():
     # Real Iqra_Extra_IS26 sentence (Uthmani, with the '@' error marker) vs Tanzil 2:124
     quran = ["وإذ ابتلى إبراهيم ربه بكلمات فأتمهن"]

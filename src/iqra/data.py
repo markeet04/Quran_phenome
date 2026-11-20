@@ -187,6 +187,36 @@ def quranic_flags(sentences, quran_lines, min_words=2):
     return flags
 
 
+def quranic_window_flags(sentences, quran_lines, run=3):
+    """True where a sentence shares a run of `run` consecutive clean words with the Quran.
+
+    Iqra_Extra_IS26 sentences carry the spoken error inside the text, marked with '@':
+    '@' + a letter means that letter was wrongly inserted (يُغ@خْشِيكُمُ: an extra خ),
+    '@' + a vowel mark means the letters are intact; the marker can also split a word
+    with spaces. Marked words are repaired by removing '@' and the letter right after
+    it; fragments with under 2 letters split the sentence into segments; any `run`-word
+    window of a segment found in the Quran (rasm, word boundaries) marks it Quranic.
+    """
+    corpus = " " + " ".join(rasm(v) for v in quran_lines) + " "
+    flags = []
+    for s in sentences:
+        segments, cur = [], []
+        for raw in str(s).split():
+            raw = re.sub("@[ء-ي]?", "", raw)
+            if len(normalise_arabic(raw).replace(" ", "")) < 2:
+                if cur:
+                    segments.append(cur)
+                cur = []
+            else:
+                cur.append(rasm(raw))
+        if cur:
+            segments.append(cur)
+        hit = any(f" {' '.join(seg[i:i + run])} " in corpus
+                  for seg in segments for i in range(len(seg) - run + 1))
+        flags.append(hit)
+    return flags
+
+
 def load_tanzil_simple_clean(url=("https://tanzil.net/pub/download/index.php?"
                                   "quranType=simple-clean&outType=txt-2&agree=true")):
     """Quran text from Tanzil (simple-clean, 'sura|aya|text' lines). Needs internet."""
