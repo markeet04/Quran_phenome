@@ -47,6 +47,27 @@ def sha256_file(path, chunk=1 << 22):
     return h.hexdigest()
 
 
+def find_reference_model(weights_sha256, search_root="/kaggle/input"):
+    """Directory of the attached model.safetensors whose SHA-256 equals the reference's.
+
+    Independent of folder names (the same NB8 model may be mounted as a dataset or as a
+    notebook's output). Returns (dir, candidates checked as [(path, sha256)]); raises,
+    listing every candidate, when none matches.
+    """
+    import glob
+    import os
+    checked = []
+    for p in sorted(glob.glob(os.path.join(search_root, "**", "model.safetensors"), recursive=True)):
+        h = sha256_file(p)
+        checked.append((p, h))
+        if h == weights_sha256:
+            return os.path.dirname(p), checked
+    listing = "\n".join(f"  {h[:12]}  {p}" for p, h in checked) or "  (no model.safetensors found)"
+    raise FileNotFoundError(f"no attached model.safetensors matches the reference "
+                            f"{weights_sha256[:12]}; attach the NB8 model output "
+                            f"(notebook17aed3d165 / quran_model_final). Checked:\n{listing}")
+
+
 def load_with_report(model_dir, device="cpu"):
     """Load a checkpoint and return (model, loading info); missing/unexpected keys must be empty."""
     from transformers import Wav2Vec2BertForCTC

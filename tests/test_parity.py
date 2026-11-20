@@ -37,6 +37,19 @@ def test_compare_flags_differences():
     assert not ok
 
 
+def test_find_reference_model_by_hash(tmp_path):
+    for name, payload in (("a/checkpoint-5000", b"stage1"), ("b/quran_model_final", b"nb8"),
+                          ("c/other", b"x")):
+        d = tmp_path / name
+        d.mkdir(parents=True)
+        (d / "model.safetensors").write_bytes(payload)
+    target = parity.sha256_file(tmp_path / "b/quran_model_final/model.safetensors")
+    found, checked = parity.find_reference_model(target, str(tmp_path))
+    assert Path(found) == tmp_path / "b" / "quran_model_final"
+    with pytest.raises(FileNotFoundError, match="Checked"):
+        parity.find_reference_model("0" * 64, str(tmp_path))
+
+
 @pytest.mark.skipif(not (MODEL_DIR / "model.safetensors").exists(), reason="NB8 model not on this machine")
 def test_local_rerun_reproduces_fixture():
     transformers = pytest.importorskip("transformers")
