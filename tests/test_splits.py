@@ -57,6 +57,13 @@ def test_quranic_flags():
     assert data.quranic_flags(sentences, quran) == [True, False, False]
 
 
+def test_quranic_flags_uthmani_against_simple_spelling():
+    # Real Iqra_Extra_IS26 sentence (Uthmani, with the '@' error marker) vs Tanzil 2:124
+    quran = ["وإذ ابتلى إبراهيم ربه بكلمات فأتمهن"]
+    uthmani = "وَإِذِ ٱبۡتَلَىٰٓ إِبۡرَٰهِيمَ@ُ رَبُّهُ"
+    assert data.quranic_flags([uthmani], quran) == [True]
+
+
 def test_audio_fingerprint():
     a = np.zeros(16000, dtype=np.float32)
     b = a.copy(); b[5] = 1e-3

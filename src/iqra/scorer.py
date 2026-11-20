@@ -110,7 +110,7 @@ def parse_official(align_stdout: str, analysis_stdout: str) -> dict:
             raise RuntimeError(f"could not find {key} in scorer output:\n{analysis_stdout}")
         out[key] = float(m.group(1)) if key in ("recall", "precision", "f1") else int(m.group(1))
     out["TR"] = out["CD"] + out["ED"]
-    m = re.search(r"Accuracy:\s*([0-9.]+)", align_stdout)
+    m = re.search(r"Accuracy:\s*(-?[0-9.]+)", align_stdout)     # negative when PER > 1
     out["per"] = round(1.0 - float(m.group(1)), 4) if m else float("nan")
     return out
 
@@ -241,25 +241,51 @@ def summed_metrics(counts: pd.DataFrame) -> dict:
 
 
 # --------------------------------------------------------------------------- bootstrap
-def paired_bootstrap_gain(counts_base: pd.DataFrame, counts_new: pd.DataFrame,
+def paired_bootstrap_gain(counts_base: pd.DataFrame, counts_new: pd.DataFrame, clusters,
                           n_resamples=1000, interval=0.90, seed=13) -> dict:
-    """F1(new) - F1(base) with a paired bootstrap interval over clips (SPEC section 5).
+    """F1(new) - F1(base) with a paired cluster-bootstrap interval (SPEC section 5).
 
-    Both frames come from per_clip_counts on the same clips. Each resample draws clip
-    IDs with replacement and recomputes P, R, F1 from summed counts for both systems.
+    Both frames come from per_clip_counts on the same clips. `clusters` maps each clip
+    ID to its cluster: on Extra-dev, the canonical sentence (phoneme_ref), because every
+    sentence is read ~10 times and recordings of one sentence are not independent.
+    Each resample draws whole clusters with replacement (every clip of a drawn cluster
+    comes along), sums TR/FR/FA per system and recomputes P, R, F1, so the interval
+    reflects how many independent sentences the dev set really has. Pass
+    clusters={id: id} for a plain clip bootstrap.
     """
-    ids = counts_base.index
+    ids = list(counts_base.index)
     if set(ids) != set(counts_new.index):
         raise ValueError("paired bootstrap needs the same clips in both systems")
-    b = counts_base.loc[ids, ["TR", "FR", "FA"]].to_numpy(dtype=np.int64)
-    n = counts_new.loc[ids, ["TR", "FR", "FA"]].to_numpy(dtype=np.int64)
+    missing = [i for i in ids if i not in clusters]
+    if missing:
+        raise ValueError(f"{len(missing)} clips have no cluster (e.g. {missing[:3]})")
+    keys = pd.Series([clusters[i] for i in ids], index=ids)
+    cols = ["TR", "FR", "FA"]
+    b = counts_base.loc[ids, cols].groupby(keys.values).sum().to_numpy(dtype=np.int64)
+    n = counts_new.loc[ids, cols].groupby(keys.values).sum().to_numpy(dtype=np.int64)
     rng = np.random.default_rng(seed)
     gains = np.empty(n_resamples)
+    n_clusters = len(b)
     for k in range(n_resamples):
-        idx = rng.integers(0, len(ids), len(ids))
+        idx = rng.integers(0, n_clusters, n_clusters)
         fb = metrics_from_counts(*b[idx].sum(axis=0))["f1"]
         fn = metrics_from_counts(*n[idx].sum(axis=0))["f1"]
         gains[k] = fn - fb
     lo, hi = np.quantile(gains, [(1 - interval) / 2, 1 - (1 - interval) / 2])
     point = (metrics_from_counts(*n.sum(axis=0))["f1"] - metrics_from_counts(*b.sum(axis=0))["f1"])
-    return {"gain": point, "lo": float(lo), "hi": float(hi), "excludes_zero": bool(lo > 0 or hi < 0)}
+    return {"gain": point, "lo": float(lo), "hi": float(hi), "n_clusters": n_clusters,
+            "excludes_zero": bool(lo > 0 or hi < 0)}
+
+
+def bootstrap_f1_interval(counts: pd.DataFrame, clusters, n_resamples=1000, interval=0.90,
+                          seed=13) -> dict:
+    """F1 of one system with a cluster-bootstrap interval (for ladder rows)."""
+    ids = list(counts.index)
+    keys = [clusters[i] for i in ids]
+    c = counts.loc[ids, ["TR", "FR", "FA"]].groupby(keys).sum().to_numpy(dtype=np.int64)
+    rng = np.random.default_rng(seed)
+    f1s = np.array([metrics_from_counts(*c[rng.integers(0, len(c), len(c))].sum(axis=0))["f1"]
+                    for _ in range(n_resamples)])
+    lo, hi = np.quantile(f1s, [(1 - interval) / 2, 1 - (1 - interval) / 2])
+    return {"f1": metrics_from_counts(*c.sum(axis=0))["f1"], "lo": float(lo), "hi": float(hi),
+            "n_clusters": len(c)}

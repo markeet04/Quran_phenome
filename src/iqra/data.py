@@ -115,6 +115,16 @@ def decode_audio(entry):
     return arr.mean(axis=1), int(sr)
 
 
+def to_16k(array, sr):
+    """Resample to 16 kHz the way the training pipeline did (datasets' Audio cast calls
+    librosa.resample with its default); a no-op for 16 kHz audio."""
+    if sr == 16_000:
+        return np.asarray(array, dtype=np.float32)
+    import librosa
+    return librosa.resample(np.asarray(array, dtype=np.float32), orig_sr=sr,
+                            target_sr=16_000).astype(np.float32)
+
+
 def iter_audio(ds, column="audio", batch=256):
     """Yield (row index, array, sampling rate) from a datasets.Dataset without using its
     audio decoding: reads the raw Arrow column and decodes with soundfile."""
@@ -152,17 +162,28 @@ def normalise_arabic(text) -> str:
     return " ".join(t.split())
 
 
+def rasm(text) -> str:
+    """Consonant skeleton for matching Uthmani against simple spelling.
+
+    Uthmani writes many long a's with a small (dagger) alif, e.g. ابرٰهيم, where the
+    simple text has a full alif, ابراهيم; so alif and hamza are dropped on both sides.
+    """
+    words = [w.replace("ا", "").replace("ء", "") for w in normalise_arabic(text).split()]
+    return " ".join(w for w in words if w)
+
+
 def quranic_flags(sentences, quran_lines, min_words=2):
-    """True where a sentence (normalised, >= min_words words) occurs verbatim in the Quran.
+    """True where a sentence (>= min_words words) occurs in the Quran, compared on rasm().
 
     `quran_lines` are verse texts (e.g. Tanzil simple-clean); matching runs over the
-    verses joined by spaces, on word boundaries.
+    verses joined by spaces, on word boundaries. Remaining spelling differences between
+    scripts (e.g. الصلوة / الصلاة) can still miss, so the share is a lower bound.
     """
-    corpus = " " + " ".join(normalise_arabic(v) for v in quran_lines) + " "
+    corpus = " " + " ".join(rasm(v) for v in quran_lines) + " "
     flags = []
     for s in sentences:
-        n = normalise_arabic(s)
-        flags.append(len(n.split()) >= min_words and f" {n} " in corpus)
+        n = rasm(s)
+        flags.append(len(normalise_arabic(s).split()) >= min_words and f" {n} " in corpus)
     return flags
 
 

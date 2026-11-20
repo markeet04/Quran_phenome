@@ -3,6 +3,7 @@ import re
 import subprocess
 import sys
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -96,6 +97,14 @@ def test_count_parity_every_branch(seed, tmp_path):
           f"F1={official['f1']} parity exact")
 
 
+def test_per_parsed_when_accuracy_is_negative():
+    analysis = ("Recall: 0.5000\nPrecision: 0.5000\nf1-score: 0.5000\nTrue Acception: 0.5 | 1\n"
+                "False Rejection: 0.5 | 1\nFalse Acceptance: 0.5 | 1\nCorrect Diagnosis: 1.0 | 1\n"
+                "Error Diagnosis: 0.0 | 0\n")
+    out = scorer.parse_official("** MD&D Evaluation **\nCorrect Rate: -0.2\nAccuracy: -7.6054\n", analysis)
+    assert out["per"] == 8.6054
+
+
 def test_perfect_predictor(synthetic):
     truth, _ = synthetic
     pred = truth.rename(columns={"Annotation_phn": "Prediction"})[["ID", "Prediction"]]
@@ -135,9 +144,41 @@ def test_rejects_inputs_the_official_scripts_mishandle(synthetic):
 def test_paired_bootstrap(synthetic):
     truth, pred = synthetic
     counts = scorer.per_clip_counts(truth, pred)
-    same = scorer.paired_bootstrap_gain(counts, counts, n_resamples=200)
+    clusters = {i: f"s{k % 10}" for k, i in enumerate(counts.index)}      # 10 "sentences"
+    same = scorer.paired_bootstrap_gain(counts, counts, clusters, n_resamples=200)
     assert same["gain"] == 0.0 and same["lo"] == 0.0 and same["hi"] == 0.0
+    assert same["n_clusters"] == 10
     perfect = truth.rename(columns={"Annotation_phn": "Prediction"})[["ID", "Prediction"]]
     better = scorer.paired_bootstrap_gain(counts, scorer.per_clip_counts(truth, perfect),
-                                          n_resamples=200)
+                                          clusters, n_resamples=200)
     assert better["gain"] > 0 and better["excludes_zero"]
+    with pytest.raises(ValueError):
+        scorer.paired_bootstrap_gain(counts, counts, {}, n_resamples=10)
+
+
+def test_cluster_bootstrap_is_wider_on_correlated_data():
+    """10 readings per sentence that share errors: resampling clips overstates certainty."""
+    rng = np.random.default_rng(0)
+    rows_b, rows_n, clusters = [], [], {}
+    for s in range(27):
+        # the new system helps on some sentences and hurts on others, consistently per sentence
+        effect = rng.normal(0, 3)
+        for r in range(10):
+            cid = f"s{s}_r{r}"
+            clusters[cid] = f"s{s}"
+            base = dict(TR=10, FR=6, FA=4)
+            new = dict(TR=10, FR=max(0, int(round(6 - effect))), FA=4)
+            rows_b.append({"ID": cid, **base}); rows_n.append({"ID": cid, **new})
+    b = pd.DataFrame(rows_b).set_index("ID"); n = pd.DataFrame(rows_n).set_index("ID")
+    by_clip = scorer.paired_bootstrap_gain(b, n, {i: i for i in b.index}, n_resamples=500)
+    by_sentence = scorer.paired_bootstrap_gain(b, n, clusters, n_resamples=500)
+    assert by_clip["gain"] == by_sentence["gain"]
+    assert (by_sentence["hi"] - by_sentence["lo"]) > 2 * (by_clip["hi"] - by_clip["lo"])
+
+
+def test_bootstrap_f1_interval(synthetic):
+    truth, pred = synthetic
+    counts = scorer.per_clip_counts(truth, pred)
+    res = scorer.bootstrap_f1_interval(counts, {i: i for i in counts.index}, n_resamples=200)
+    assert res["lo"] <= res["f1"] <= res["hi"]
+    assert res["f1"] == pytest.approx(scorer.summed_metrics(counts)["f1"])

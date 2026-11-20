@@ -51,6 +51,19 @@ def find_cache_root(default="/kaggle/input/datasets/qasimmaajid/iqra-cache/iqra_
     return hits[0]
 
 
+def find_input(marker, search_root="/kaggle/input", what=None):
+    """Directory of the first file matching `marker` (a glob relative to any depth under
+    `search_root`), e.g. find_input("splits.json") or find_input("checkpoint-5000/config.json").
+    Raises with a clear message naming the dataset to attach."""
+    import glob
+    import os
+    hits = sorted(glob.glob(os.path.join(search_root, "**", marker), recursive=True))
+    if not hits:
+        raise FileNotFoundError(f"{marker} not found under {search_root}: attach "
+                                f"{what or 'the dataset that contains it'}")
+    return os.path.dirname(hits[0])
+
+
 @dataclass
 class KagglePaths:
     cache_root: str = "/kaggle/input/datasets/qasimmaajid/iqra-cache/iqra_prep"
