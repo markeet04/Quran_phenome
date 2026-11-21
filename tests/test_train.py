@@ -72,7 +72,10 @@ def test_run_configs_match_the_spec():
         assert r.adapter_layerdrop_fix                                      # decision 33
     assert not base.adapter_layerdrop_fix                                   # BASE = NB8 recipe
     for r in (base, a, b):                                                  # NB8 settings, equal length
-        assert (r.learning_rate, r.warmup_steps, r.max_steps, r.batch_size, r.grad_accum) == (5e-5, 200, 8000, 8, 2)
+        assert (r.learning_rate, r.warmup_steps, r.max_steps) == (5e-5, 200, 8000)
+        assert r.batch_size * r.grad_accum == 16                            # same effective batch
+    assert (base.batch_size, base.grad_accum) == (8, 2)                     # NB8 exactly
+    assert (a.batch_size, a.grad_accum) == (b.batch_size, b.grad_accum) == (4, 4)   # decision 34
 
 
 def test_adapter_layerdrop_fix():

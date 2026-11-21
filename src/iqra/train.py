@@ -65,12 +65,15 @@ RUNS = {
     # consistency every other step (decision 32): the T5 probe measured 4.88 s/step with it on
     # every step (11.3 h projected, over budget) vs 2.71 s/step for BASE; every other step
     # projects ~8.8 h with the same 8,000 steps as BASE
+    # batch 4 x 4 (decision 34): the consistency loss holds two forward passes; with 8 x 2
+    # run A ran out of memory on a T4 (14.56 GiB) on a batch of long clips. Same effective
+    # batch of 16, same steps and learning rate as BASE.
     "A": RunConfig("A", ("fold_a",), fusion=True, consistency_lambda=1.0,
                    sample_weights=True, spec_augment=True, consistency_every=2,
-                   adapter_layerdrop_fix=True),
+                   adapter_layerdrop_fix=True, batch_size=4, grad_accum=4),
     "B": RunConfig("B", ("fold_b",), fusion=True, consistency_lambda=1.0,
                    sample_weights=True, spec_augment=True, consistency_every=2,
-                   adapter_layerdrop_fix=True),
+                   adapter_layerdrop_fix=True, batch_size=4, grad_accum=4),
 }
 
 
