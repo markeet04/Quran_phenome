@@ -42,7 +42,8 @@ def add_layer_fusion(model, init_last_logit=INIT_LAST_LOGIT):
     if hasattr(encoder, "layer_fusion"):
         return model
     layers = encoder.layers
-    encoder.layer_fusion = LayerFusion(len(layers), init_last_logit)
+    # create the fusion logits where the encoder already lives (the model may be on the GPU)
+    encoder.layer_fusion = LayerFusion(len(layers), init_last_logit).to(next(encoder.parameters()).device)
     encoder._fusion_outputs = {}
 
     def capture(idx):

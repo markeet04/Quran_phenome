@@ -77,6 +77,18 @@ def test_plain_checkpoint_loads_into_fused_and_fused_round_trips(tmp_path):
         assert torch.allclose(m.eval()(**feats).logits, m2(**feats).logits)
 
 
+def test_fusion_is_created_on_the_models_device():
+    """Fusion added to a model already moved to a device must live on that device
+    (the NB13 run attached fusion to a model on the GPU and hit cuda/cpu mismatch).
+    The 'meta' device stands in for a GPU on this CPU-only machine."""
+    m = _tiny().to("meta")
+    M.add_layer_fusion(m)
+    assert m.wav2vec2_bert.encoder.layer_fusion.logits.device.type == "meta"
+    if torch.cuda.is_available():
+        g = M.add_layer_fusion(_tiny().to("cuda"))
+        assert g.wav2vec2_bert.encoder.layer_fusion.logits.is_cuda
+
+
 def test_fusion_actually_changes_the_output():
     """With uniform weights the output must differ from the plain model (the hooks fire)."""
     plain = _tiny()
