@@ -13,6 +13,11 @@ def test_clip_per_and_agreement():
     assert weights.clip_per("a b c d".split(), "a b c d".split()) == 0.0
     assert weights.clip_per("a b c d".split(), "a x c".split()) == pytest.approx(0.5)
     assert weights.agreement_weight(0.31) == 0.2 and weights.agreement_weight(0.30) == 1.0
+    # empty label -> PER undefined -> broken label, down-weighted (NaN > 0.30 is False)
+    assert weights.clip_per([], "a b".split()) != weights.clip_per([], "a b".split())   # NaN
+    assert weights.agreement_weight(float("nan")) == 0.2
+    import numpy as np
+    assert weights.agreement_weight(np.float64("nan")) == 0.2
 
 
 def _table():

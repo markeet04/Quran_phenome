@@ -27,6 +27,10 @@ def clip_per(label, decoded):
 
 
 def agreement_weight(per, cutoff=0.30, low=0.2):
+    """0.2 above the cut-off. An undefined PER (empty label on real audio) is a broken
+    label, so it is down-weighted too: NaN > cutoff is False, which would keep it at 1."""
+    if per is None or (isinstance(per, float) and math.isnan(per)):
+        return low
     return low if per > cutoff else 1.0
 
 
