@@ -61,10 +61,13 @@ class RunConfig:
 RUNS = {
     "BASE": RunConfig("BASE", ("fold_a", "fold_b"), fusion=False, consistency_lambda=0.0,
                       sample_weights=False, spec_augment=False),
+    # consistency every other step (decision 32): the T5 probe measured 4.88 s/step with it on
+    # every step (11.3 h projected, over budget) vs 2.71 s/step for BASE; every other step
+    # projects ~8.8 h with the same 8,000 steps as BASE
     "A": RunConfig("A", ("fold_a",), fusion=True, consistency_lambda=1.0,
-                   sample_weights=True, spec_augment=True),
+                   sample_weights=True, spec_augment=True, consistency_every=2),
     "B": RunConfig("B", ("fold_b",), fusion=True, consistency_lambda=1.0,
-                   sample_weights=True, spec_augment=True),
+                   sample_weights=True, spec_augment=True, consistency_every=2),
 }
 
 

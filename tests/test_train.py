@@ -62,6 +62,17 @@ def setup():
                 extra_labels_by_id=labels, splits=splits, sample_weights=sw)
 
 
+def test_run_configs_match_the_spec():
+    base, a, b = T.RUNS["BASE"], T.RUNS["A"], T.RUNS["B"]
+    assert (base.fusion, base.consistency_lambda, base.sample_weights, base.spec_augment) == (False, 0.0, False, False)
+    assert base.extra_folds == ("fold_a", "fold_b")
+    for r, fold in ((a, ("fold_a",)), (b, ("fold_b",))):
+        assert (r.fusion, r.consistency_lambda, r.sample_weights, r.spec_augment) == (True, 1.0, True, True)
+        assert r.extra_folds == fold and r.consistency_every == 2          # decision 32
+    for r in (base, a, b):                                                  # NB8 settings, equal length
+        assert (r.learning_rate, r.warmup_steps, r.max_steps, r.batch_size, r.grad_accum) == (5e-5, 200, 8000, 8, 2)
+
+
 def test_cosine_factor():
     assert T.cosine_factor(0, 200, 8000) == 0.0
     assert T.cosine_factor(100, 200, 8000) == 0.5
