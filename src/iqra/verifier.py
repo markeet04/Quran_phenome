@@ -13,7 +13,7 @@ from . import scorer
 CATEGORICAL = ["op", "tok_exp", "tok_heard", "exp_prev1", "exp_prev2", "exp_next1", "exp_next2",
                "pair", "err_type", "runner_up"]
 NUMERIC = ["fa_failed", "span_len", "exp_lp_mean", "exp_lp_max", "gop", "entropy_mean", "blank_mean",
-           "n_flags_per_phone", "n_frames", "n_expected", "rel_pos", "heard_lp_mean", "heard_lp_max",
+           "n_flags_per_phone", "n_frames", "n_expected", "rel_pos", "is_last", "heard_lp_mean", "heard_lp_max",
            "margin_exp_minus_heard", "heard_peak_prob", "runner_up_prob", "runner_up_is_expected",
            "heard_span_len"]
 FEATURES = CATEGORICAL + NUMERIC
@@ -28,7 +28,10 @@ FEATURE_SETS = {
     "no_identity": [f for f in FEATURES if f not in IDENTITY],
     "acoustic_only": ["op"] + ACOUSTIC,
     "pair_only": ["op", "pair"],
+    # decision 29: substitutions only, acoustic evidence + position + coarse error type
+    "primary": ACOUSTIC + ["rel_pos", "is_last", "err_type"],
 }
+PRIMARY_OPS = ("S",)      # the primary verifier scores substitutions; every deletion is reverted
 
 
 def params(cfg_verifier, seed=None):
@@ -117,21 +120,26 @@ def predict(booster, enc, df):
     return booster.predict(enc.transform(df))
 
 
-def apply(candidates_df, probs, expected_by_clip, heard_by_clip, tau):
-    """New prediction per clip: keep candidates with P(real) >= tau, revert the rest."""
+def apply(candidates_df, probs, expected_by_clip, heard_by_clip, tau, revert_deletions=False):
+    """New prediction per clip: keep candidates with P(real) >= tau, revert the rest.
+
+    revert_deletions=True (decision 29, primary design) reverts every D candidate
+    whatever its probability; their probs may be NaN.
+    """
     keep = {}
-    for (clip, pos), p in zip(candidates_df[["clip", "pos"]].itertuples(index=False), probs):
-        keep.setdefault(clip, {})[int(pos)] = bool(p >= tau)
+    for (clip, pos, op), p in zip(candidates_df[["clip", "pos", "op"]].itertuples(index=False), probs):
+        kept = False if (revert_deletions and op == "D") else bool(p >= tau)
+        keep.setdefault(clip, {})[int(pos)] = kept
     return {clip: revert(expected_by_clip[clip], heard, keep.get(clip, {}))
             for clip, heard in heard_by_clip.items()}
 
 
-def sweep_tau(candidates_df, probs, truth_df, heard_by_clip, taus):
+def sweep_tau(candidates_df, probs, truth_df, heard_by_clip, taus, revert_deletions=False):
     """Exact F1 per tau from per-clip counts (parity-tested against the official scorer)."""
     expected = dict(zip(truth_df["ID"], truth_df["Reference_phn"].str.split()))
     rows = []
     for tau in taus:
-        new = apply(candidates_df, probs, expected, heard_by_clip, tau)
+        new = apply(candidates_df, probs, expected, heard_by_clip, tau, revert_deletions)
         pred = pd.DataFrame({"ID": list(new), "Prediction": [" ".join(v) for v in new.values()]})
         m = scorer.summed_metrics(scorer.per_clip_counts(truth_df, pred))
         rows.append({"tau": tau, **m})
@@ -143,3 +151,22 @@ def robust_tau(sweep: pd.DataFrame, band=0.005):
     best = sweep["f1"].max()
     near = sweep[sweep["f1"] >= best - band]["tau"].to_numpy()
     return float(near[len(near) // 2])
+
+
+def train_primary(train_df, cfg_verifier, groups_col="sentence"):
+    """Decision 29 primary verifier: S candidates only, FEATURE_SETS["primary"].
+    Rounds from sentence-grouped CV. Returns (booster, encoder, cv result)."""
+    feats = FEATURE_SETS["primary"]
+    s_rows = train_df[train_df["op"].isin(PRIMARY_OPS)].reset_index(drop=True)
+    cv = cross_validate(s_rows, list(s_rows[groups_col]), cfg_verifier, features=feats)
+    booster, enc = train(s_rows, max(1, int(np.median(cv["best_iterations"]))), cfg_verifier, features=feats)
+    return booster, enc, cv
+
+
+def predict_primary(booster, enc, candidates_df):
+    """Probabilities for S candidates; NaN for D candidates (always reverted)."""
+    probs = np.full(len(candidates_df), np.nan)
+    s_mask = candidates_df["op"].isin(PRIMARY_OPS).to_numpy()
+    if s_mask.any():
+        probs[s_mask] = predict(booster, enc, candidates_df[s_mask])
+    return probs

@@ -80,6 +80,26 @@ def test_log_posteriors_normalised(tiny_model):
     assert np.allclose(np.exp(lp).sum(axis=1), 1.0)
 
 
+def test_output_length_matches_single_clip_runs(tiny_model):
+    model, fe = tiny_model
+    for secs in (0.5, 1.03, 2.0, 3.37, 5.0):
+        audio = _audio(secs, 11)
+        feats = fe(audio, sampling_rate=16000, return_tensors="pt")
+        T = posteriors.clip_logits(model, fe, audio, "cpu").shape[0]
+        n_in = feats["input_features"].shape[1]          # frames the model actually saw
+        assert posteriors.output_length(n_in, model.config) == T
+
+
+def test_batch_logits_trimmed_and_close_to_single(tiny_model):
+    model, fe = tiny_model
+    audios = [_audio(s, 20 + i) for i, s in enumerate((0.7, 2.3, 1.1, 3.9))]
+    batched = posteriors.batch_logits(model, fe, audios, "cpu")
+    for a, b in zip(audios, batched):
+        single = posteriors.clip_logits(model, fe, a, "cpu")
+        assert b.shape == single.shape
+        assert np.max(np.abs(b - single)) < 1e-3
+
+
 def test_check_compatible():
     a = {"vocab_hash": "v1", "frame_rate": 25.0}
     posteriors.check_compatible([a, dict(a)])

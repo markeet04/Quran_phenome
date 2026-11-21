@@ -102,6 +102,38 @@ def load_fixture(path=FIXTURE):
     return meta, arrays
 
 
+def verify_environment(device="cpu", search_root="/kaggle/input"):
+    """Decision 27 check, as run in NB14: the NB8 model (found by weights hash) on the
+    reference inputs, on CPU, against the transformers 4.44.2 outputs. Raises on failure.
+    Returns a report dict (rows, GPU-vs-CPU rows when a GPU is available, versions)."""
+    import torch
+    import transformers
+    from transformers import AutoFeatureExtractor
+    meta, ref = load_fixture()
+    model_dir, checked = find_reference_model(meta["weights_sha256"], search_root)
+    model, info = load_with_report(model_dir, "cpu")
+    if any(info.values()):
+        raise RuntimeError(f"NB8 model did not load cleanly: {info}")
+    fe = AutoFeatureExtractor.from_pretrained(model_dir)
+    real = {k[: -len("_features_input")]: v for k, v in ref.items() if k.endswith("_features_input")}
+    cur = run(model, fe, "cpu", real)
+    ok, rows = compare(ref, cur)
+    gpu_rows = None
+    if str(device).startswith("cuda"):
+        cur_gpu = run(model.to(device), fe, device, real)
+        gpu_rows = [{"input": r["input"],
+                     "gpu_vs_cpu_max_abs_logit_diff": float(np.max(np.abs(cur_gpu[k] - cur[k]))),
+                     "gpu_vs_cpu_argmax_mismatch_frames": int(np.sum(cur_gpu[k].argmax(-1) != cur[k].argmax(-1)))}
+                    for r in rows for k in [r["input"] + "_logits"]]
+    del model
+    report = {"pass": ok, "rows": rows, "gpu_vs_cpu": gpu_rows, "model_dir": model_dir,
+              "here": {"transformers": transformers.__version__, "torch": torch.__version__},
+              "reference": {k: meta[k] for k in ("transformers", "torch")}}
+    if not ok:
+        raise RuntimeError(f"transformers on this image does not reproduce 4.44.2: {rows}")
+    return report
+
+
 def compare(reference: dict, current: dict, logit_tol=1e-3, feature_tol=1e-4):
     """Per input: max |logit diff|, frames whose argmax differs, feature diff.
     Passes only if every argmax matches and all differences are within tolerance."""

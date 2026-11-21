@@ -184,7 +184,7 @@ def candidate_features(clip_id, expected, entry, tok2id, id2tok, blank, said=Non
             "entropy_mean": float(entropy[fr].mean()), "blank_mean": float(probs[fr, blank].mean()),
             # utterance
             "n_flags_per_phone": len(cands) / max(L, 1), "n_frames": T, "n_expected": L,
-            "rel_pos": c.j / max(L - 1, 1),
+            "rel_pos": c.j / max(L - 1, 1), "is_last": int(c.j == L - 1),
             "label": y,
         }
         if c.op == "S":

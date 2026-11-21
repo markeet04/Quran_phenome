@@ -96,6 +96,25 @@ def test_feature_subsets_train_and_predict(name):
     assert len(verifier.predict(booster, enc, _table(10, 4)[0])) > 0
 
 
+def test_primary_design_reverts_every_deletion():
+    """Decision 29: S-only verifier; D candidates are reverted whatever tau is."""
+    cfg = Verifier(max_rounds=30, early_stopping=5, cv_folds=3)
+    train_df, _, _ = _table(80, 5)
+    train_df["sentence"] = train_df["clip"]
+    booster, enc, cv = verifier.train_primary(train_df, cfg)
+    assert booster.num_feature() == len(verifier.FEATURE_SETS["primary"])
+    dev_df, truth, heard = _table(30, 6)
+    probs = verifier.predict_primary(booster, enc, dev_df)
+    assert np.isnan(probs[dev_df["op"] == "D"]).all() and np.isfinite(probs[dev_df["op"] == "S"]).all()
+    expected = dict(zip(truth["ID"], truth["Reference_phn"].str.split()))
+    keep_all_s = verifier.apply(dev_df, probs, expected, heard, tau=0.0, revert_deletions=True)
+    from iqra.candidates import revert
+    for cid, h in heard.items():
+        d_pos = {int(p): False for c, p, op in dev_df[["clip", "pos", "op"]].itertuples(index=False)
+                 if c == cid and op == "D"}
+        assert keep_all_s[cid] == revert(expected[cid], h, d_pos)
+
+
 def test_identity_free_set_has_no_identity_features():
     assert not set(verifier.IDENTITY) & set(verifier.FEATURE_SETS["no_identity"])
 

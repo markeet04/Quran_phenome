@@ -38,6 +38,38 @@ def clip_logits(model, feature_extractor, audio_16k, device):
         return model(**feats).logits[0].float().cpu().numpy()
 
 
+def output_length(n_feature_frames, config):
+    """Model output frames for an input of `n_feature_frames` feature frames: each adapter
+    layer is a stride-`adapter_stride` convolution with kernel `adapter_kernel_size`,
+    padding kernel // 2."""
+    T = int(n_feature_frames)
+    if getattr(config, "add_adapter", False):
+        k, s = config.adapter_kernel_size, config.adapter_stride
+        for _ in range(config.num_adapter_layers):
+            T = (T + 2 * (k // 2) - k) // s + 1
+    return T
+
+
+def batch_logits(model, feature_extractor, audios_16k, device, fp16=False):
+    """Logits for several clips in one padded forward pass, each trimmed to its own length.
+
+    For bulk filtering only (the agreement filter, T4): padding and optional fp16 change
+    logits slightly, so reported numbers and caches always use clip_logits.
+    """
+    import torch
+    feats = feature_extractor([np.asarray(a, dtype=np.float32) for a in audios_16k],
+                              sampling_rate=16_000, padding=True, return_tensors="pt")
+    # A clip run on its own is padded by the feature extractor to an even frame count
+    # (SeamlessM4TFeatureExtractor's default pad_to_multiple_of=2), and its output length
+    # follows that padded count; trim each clip of the batch to the same length.
+    n_frames = [n + (n % 2) for n in feats["attention_mask"].sum(dim=1).tolist()]
+    feats = {k: v.to(device) for k, v in feats.items()}
+    with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.float16,
+                                         enabled=fp16 and str(device).startswith("cuda")):
+        out = model(**feats).logits.float().cpu().numpy()
+    return [out[i, :output_length(n, model.config)] for i, n in enumerate(n_frames)]
+
+
 def make_entry(logits, id2tok, blank_id):
     """Cache entry for one clip: raw float32 logits, greedy tokens and spans."""
     import torch
