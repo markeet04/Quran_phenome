@@ -69,8 +69,28 @@ def test_run_configs_match_the_spec():
     for r, fold in ((a, ("fold_a",)), (b, ("fold_b",))):
         assert (r.fusion, r.consistency_lambda, r.sample_weights, r.spec_augment) == (True, 1.0, True, True)
         assert r.extra_folds == fold and r.consistency_every == 2          # decision 32
+        assert r.adapter_layerdrop_fix                                      # decision 33
+    assert not base.adapter_layerdrop_fix                                   # BASE = NB8 recipe
     for r in (base, a, b):                                                  # NB8 settings, equal length
         assert (r.learning_rate, r.warmup_steps, r.max_steps, r.batch_size, r.grad_accum) == (5e-5, 200, 8000, 8, 2)
+
+
+def test_adapter_layerdrop_fix():
+    """A/B: the adapter is never skipped (constant output length over many training passes);
+    BASE keeps the library behaviour. Encoder layerdrop is untouched in both."""
+    feats = T.Collator(FE)([{"input_features": FE(np.random.default_rng(0).normal(0, .1, 32000).astype(np.float32),
+                                                   sampling_rate=16000).input_features[0], "labels": [5, 6]}])
+    batch = {k: v for k, v in feats.items() if k != "labels"}
+    lengths = {}
+    for name in ("BASE", "A"):
+        m = _tiny(layerdrop=0.5).train()
+        active = T.configure(m, T.RUNS[name])
+        torch.manual_seed(0)
+        with torch.no_grad():
+            lengths[name] = {m(**batch).logits.shape[1] for _ in range(20)}
+        assert active["layerdrop"] == 0.5                                   # encoder layerdrop kept
+        assert active["adapter_layerdrop"] == (0.0 if name == "A" else 0.5)
+    assert len(lengths["A"]) == 1 and len(lengths["BASE"]) == 2
 
 
 def test_cosine_factor():

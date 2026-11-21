@@ -37,7 +37,8 @@ def ctc_with_consistency(model, batch, lam):
     The library applies layerdrop to the adapter too (skipped with probability
     config.layerdrop in training, 0.1 here, as in NB2/NB8), so the two passes can come out
     at different frame rates. Those frames cannot be compared one to one: the KL term is
-    skipped for that batch (CTC still trains) and kl_skipped=True is reported.
+    skipped for that batch (CTC still trains) and kl_skipped=True is reported. Runs A and B
+    switch the adapter's layerdrop off (decision 33), so there it should never happen.
     """
     out1 = model(**batch)
     zero = torch.zeros((), device=out1.loss.device)

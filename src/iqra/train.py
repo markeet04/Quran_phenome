@@ -48,6 +48,7 @@ class RunConfig:
     eval_every: int = 500
     keep_best: int = 3
     consistency_every: int = 1           # 2 = every other step (time fallback, SPEC risks)
+    adapter_layerdrop_fix: bool = False  # decision 33: never skip the adapter in training
     mask_time_prob: float = 0.05
     mask_time_length: int = 10
     mask_feature_prob: float = 0.0
@@ -65,9 +66,11 @@ RUNS = {
     # every step (11.3 h projected, over budget) vs 2.71 s/step for BASE; every other step
     # projects ~8.8 h with the same 8,000 steps as BASE
     "A": RunConfig("A", ("fold_a",), fusion=True, consistency_lambda=1.0,
-                   sample_weights=True, spec_augment=True, consistency_every=2),
+                   sample_weights=True, spec_augment=True, consistency_every=2,
+                   adapter_layerdrop_fix=True),
     "B": RunConfig("B", ("fold_b",), fusion=True, consistency_lambda=1.0,
-                   sample_weights=True, spec_augment=True, consistency_every=2),
+                   sample_weights=True, spec_augment=True, consistency_every=2,
+                   adapter_layerdrop_fix=True),
 }
 
 
@@ -250,9 +253,21 @@ def configure(model, run: RunConfig):
     c.mask_feature_prob = run.mask_feature_prob if run.spec_augment else 0.0
     if run.fusion:
         add_layer_fusion(model)
+    adapter = getattr(model.wav2vec2_bert, "adapter", None)
+    if run.adapter_layerdrop_fix and adapter is not None:
+        # Decision 33. In training the library skips the adapter with probability
+        # config.layerdrop, yet computes CTC output lengths as if it had run: the logits
+        # come out twice as long and the loss sees only the first half (CTC ~3.2 vs ~0.2
+        # in the BASE log on ~10% of passes). Only the adapter's layerdrop is set to 0;
+        # encoder layerdrop (length-preserving) stays as configured.
+        if not hasattr(adapter, "layerdrop"):
+            raise RuntimeError("adapter has no 'layerdrop' attribute in this transformers version: "
+                               "the decision-33 fix would silently do nothing")
+        adapter.layerdrop = 0.0
     return {"run": run.name, "apply_spec_augment": c.apply_spec_augment, "mask_time_prob": c.mask_time_prob,
             "mask_time_length": c.mask_time_length, "mask_feature_prob": c.mask_feature_prob,
             "layerdrop": getattr(c, "layerdrop", None), "fusion": bool(getattr(c, FUSION_FLAG, False)),
+            "adapter_layerdrop": getattr(adapter, "layerdrop", None) if adapter is not None else None,
             "consistency_lambda": run.consistency_lambda, "consistency_every": run.consistency_every,
             "sample_weights": run.sample_weights, "extra_folds": list(run.extra_folds),
             "lr": run.learning_rate, "fusion_lr": run.fusion_lr if run.fusion else None,
