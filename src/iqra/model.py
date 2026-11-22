@@ -121,6 +121,15 @@ def load_model(model_dir, device="cpu"):
         key = "wav2vec2_bert.encoder.layer_fusion.logits"
         model.wav2vec2_bert.encoder.layer_fusion.logits.data.copy_(state[key])
         info["unexpected_keys"] = [k for k in info.get("unexpected_keys", []) if k != key]
+    # BASE (SpecAugment off): the model built its SpecAugment mask vector when checkpoint-5000
+    # was loaded (mask_time_prob 0.05 there), then configure() set the mask probabilities to 0
+    # and the checkpoint was saved with the vector but a config that no longer creates it. The
+    # vector only replaces masked frames in training; inference never reads it. Accept exactly
+    # that key, and only when this config has masking off (found by the T6 dry run).
+    spec_key = "wav2vec2_bert.masked_spec_embed"
+    if (not hasattr(model.wav2vec2_bert, "masked_spec_embed")
+            and cfg.get("mask_time_prob", 0) == 0 and cfg.get("mask_feature_prob", 0) == 0):
+        info["unexpected_keys"] = [k for k in info.get("unexpected_keys", []) if k != spec_key]
     return model.to(device).eval(), info
 
 

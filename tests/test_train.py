@@ -194,3 +194,19 @@ def test_real_evaluator_and_probe(setup, tmp_path):
                       probe_steps=3, log=lambda *a: None)
     assert summary["steps"] == 3 and summary["kept"] == []           # probe keeps nothing
     assert "projected_hours_full_run" in summary and "f1" in summary["step0_eval"]
+
+
+def test_saved_base_and_recipe_v2_checkpoints_reload_cleanly(tmp_path):
+    """T6 dry-run finding: BASE sets mask probabilities to 0 after the SpecAugment mask vector
+    exists, so its checkpoint holds a vector its config no longer builds. It must still load
+    with no other missing/unexpected keys and give the same logits."""
+    x = {k: v for k, v in FE(np.random.default_rng(3).normal(0, .1, 24000).astype(np.float32),
+                             sampling_rate=16000, return_tensors="pt").items()}
+    for name in ("BASE", "A"):
+        m = _tiny()
+        T.configure(m, T.RUNS[name])
+        m.eval().save_pretrained(tmp_path / name)
+        back, info = M.load_model(tmp_path / name)
+        assert not any(info.values()), (name, info)
+        with torch.no_grad():
+            assert torch.allclose(m(**x).logits, back(**x).logits, atol=1e-5)
