@@ -1,0 +1,36 @@
+{
+ "_comment": "SPEC T7 freeze. Written after the dev ladder (NB15-T6) and the decision-37 check (NB15-T6b), before any test-set access. NB16 reads this file and asserts it matches the attached artefacts. Nothing here may change after NB16 runs.",
+ "frozen_after": {"nb15_t6_commit": "d33eba8", "nb15_t6b_commit": "224dbb8"},
+ "headline": "row3_deletion_rule",
+ "headline_rule": "SPEC decision 37: highest projected test F1 among qualifying candidates (dev keep fractions applied to row 0's test P 0.634 / R 0.703).",
+ "decision16_final_system": "row4",
+ "decision16_note": "Decision 16 picks row 4 over row 5 (the LM chose alpha 0, so row 5 equals row 3). Decision 37 then makes row 3 + deletion rule the headline, because row 4's dev operating point projects below the baseline at the test's base rate. Both are scored and reported.",
+ "ensemble_members": [
+  {"name": "A05500", "run": "A", "step": 5500, "dev_f1": 0.3201},
+  {"name": "A07500", "run": "A", "step": 7500, "dev_f1": 0.3154},
+  {"name": "A08000", "run": "A", "step": 8000, "dev_f1": 0.3149},
+  {"name": "B07000", "run": "B", "step": 7000, "dev_f1": 0.3393},
+  {"name": "B07500", "run": "B", "step": 7500, "dev_f1": 0.3363},
+  {"name": "B08000", "run": "B", "step": 8000, "dev_f1": 0.336}
+ ],
+ "best_single": "B07000",
+ "base_checkpoint": {"name": "BASE06000", "run": "BASE", "step": 6000, "dev_f1": 0.3353},
+ "row0_model": {"what": "NB8 final model (0.667 on test in NB5)", "weights_sha256": "6b4c3035b0e002bc8eb1f461dd91f8fc945ce77c92296dc328e87f5ba6c693e0", "test_f1_nb5": 0.6667},
+ "stage1_model": "checkpoint-5000",
+ "row4": {"verifier": "verifier_primary_ensemble.txt", "features": "primary", "tau": 0.1, "revert_deletions": true, "dev_f1": 0.4708},
+ "row5": {"lm_alpha": 0.0, "note": "no recall-safe alpha beat the plain decode; row 5 = row 3", "dev_f1": 0.3254},
+ "row6": {"verifier": "verifier_primary_stage1.txt", "features": "primary", "tau": 0.05, "revert_deletions": true, "dev_f1": 0.4235},
+ "secondary_full_verifier": {"features": "full", "n_rounds": 22, "tau": 0.1, "revert_deletions": false, "dev_f1": 0.4795, "note": "booster not saved in NB15-T6; NB16 retrains it deterministically from the saved candidate tables and must reproduce the dev F1"},
+ "test_rows": [
+  "row0_nb8", "row1_base", "row2_best_single", "row3_ensemble6", "row4_ens_primary_verifier", "row5_ens_lm",
+  "row6_stage1_primary_verifier", "row7_stage1",
+  "row3_deletion_rule", "row0_deletion_rule", "row2_deletion_rule", "row7_deletion_rule", "secondary_full_verifier"
+ ],
+ "dev_f1": {
+  "row1_base": 0.3353, "row2_best_single": 0.3393, "row3_ensemble6": 0.3254, "row4_ens_primary_verifier": 0.4708,
+  "row5_ens_lm": 0.3254, "row6_stage1_primary_verifier": 0.4235, "row7_stage1": 0.24,
+  "row3_deletion_rule": 0.4125, "row2_deletion_rule": 0.4116, "row7_deletion_rule": 0.3646, "secondary_full_verifier": 0.4795
+ },
+ "projected_test_f1": {"row0_nb8": 0.6667, "row3_deletion_rule": 0.6801, "row4_ens_primary_verifier": 0.6094, "row0_deletion_rule": 0.6286},
+ "target": {"iqra2026_best": 0.7201, "precision": 0.7416, "recall": 0.6998}
+}
