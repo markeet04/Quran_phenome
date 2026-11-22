@@ -104,13 +104,16 @@ def encoder_last_equals_last_layer(model, input_features, attention_mask):
             "uses_adapter": bool(getattr(model.config, "add_adapter", False))}
 
 
-def load_model(model_dir, device="cpu"):
+def load_model(model_dir, device="cpu", attn_implementation=None):
     """Load a plain or fused checkpoint. Returns (model, loading_info). For a fused
-    checkpoint the fusion logits are restored after attaching the hooks."""
+    checkpoint the fusion logits are restored after attaching the hooks.
+    attn_implementation="eager" forces the plain attention computation (as transformers
+    4.44.2 did); None keeps the library default (SDPA in 5.x)."""
     from transformers import Wav2Vec2BertForCTC
     model_dir = Path(model_dir)
     cfg = json.loads((model_dir / "config.json").read_text())
-    model, info = Wav2Vec2BertForCTC.from_pretrained(model_dir, output_loading_info=True)
+    kw = {"attn_implementation": attn_implementation} if attn_implementation else {}
+    model, info = Wav2Vec2BertForCTC.from_pretrained(model_dir, output_loading_info=True, **kw)
     info = {k: list(v) for k, v in info.items()}
     if cfg.get(FUSION_FLAG):
         add_layer_fusion(model)
